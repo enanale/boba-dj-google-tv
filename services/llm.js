@@ -123,10 +123,10 @@ function parseToolCall(response) {
 async function generateSongQueries(count, theme) {
     const prompt = `Generate exactly ${count} YouTube search queries for songs that match this theme: "${theme}"
 
-Return ONLY a JSON array of search queries, nothing else. Each query should include the song title and artist if known.
+Return ONLY a JSON array of strings, nothing else. Every item in the array MUST be a single string.
 
 Example format:
-["Artist - Song Title", "Another Artist - Another Song", ...]
+["Artist - Song Title", "Another Artist - Another Song", "Artist - Track"]
 
 Be creative and pick diverse, interesting songs that fit the theme!`;
 
@@ -139,7 +139,7 @@ Be creative and pick diverse, interesting songs that fit the theme!`;
             body: JSON.stringify({
                 model: OLLAMA_MODEL,
                 messages: [
-                    { role: 'system', content: 'You are a music expert. Respond ONLY with a JSON array of song search queries.' },
+                    { role: 'system', content: 'You are a music expert. Respond ONLY with a simple JSON array of strings.' },
                     { role: 'user', content: prompt }
                 ],
                 stream: false
@@ -158,9 +158,18 @@ Be creative and pick diverse, interesting songs that fit the theme!`;
         // Extract JSON array from response
         const jsonMatch = content.match(/\[[\s\S]*\]/);
         if (jsonMatch) {
-            const queries = JSON.parse(jsonMatch[0]);
-            console.log(`🎵 Generated ${queries.length} song queries for "${theme}":`, queries);
-            return queries.slice(0, count);
+            let queries = JSON.parse(jsonMatch[0]);
+
+            // Defensive: Flatten nested arrays and ensure all are strings
+            if (Array.isArray(queries)) {
+                queries = queries.map(q => {
+                    if (Array.isArray(q)) return q[0]; // Take first element if it's an array
+                    return q;
+                }).filter(q => typeof q === 'string' && q.trim().length > 0);
+
+                console.log(`🎵 Generated ${queries.length} song queries for "${theme}":`, queries);
+                return queries.slice(0, count);
+            }
         }
 
         return [];

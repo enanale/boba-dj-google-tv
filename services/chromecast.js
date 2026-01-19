@@ -13,6 +13,7 @@ let currentPlayer = null;
 
 // Callback for when playback finishes
 let onPlaybackFinished = null;
+let hasFinishedFired = false;  // Prevent duplicate finished callbacks
 
 // SSDP discovery settings
 const SSDP_ADDRESS = '239.255.255.250';
@@ -212,19 +213,24 @@ async function castStream(streamUrl, contentType, deviceId, metadata = {}) {
 
                     console.log(`🎵 Now playing: ${metadata.title || 'Video'}`);
                     isPlaying = true;
+                    hasFinishedFired = false;  // Reset for new track
                     currentMedia = { ...metadata };
                     resolve(status);
                 });
 
                 player.on('status', (status) => {
                     if (status.playerState === 'IDLE' && status.idleReason === 'FINISHED') {
-                        console.log('📺 Playback finished');
-                        isPlaying = false;
-                        currentMedia = null;
+                        // Prevent duplicate callbacks for the same finish event
+                        if (!hasFinishedFired) {
+                            hasFinishedFired = true;
+                            console.log('📺 Playback finished');
+                            isPlaying = false;
+                            currentMedia = null;
 
-                        // Trigger callback for auto-advance
-                        if (onPlaybackFinished) {
-                            onPlaybackFinished();
+                            // Trigger callback for auto-advance
+                            if (onPlaybackFinished) {
+                                onPlaybackFinished();
+                            }
                         }
                     } else {
                         isPlaying = status.playerState === 'PLAYING' || status.playerState === 'BUFFERING';

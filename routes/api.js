@@ -10,7 +10,7 @@ let selectedDevice = null;
 
 // Set up auto-advance when track finishes
 chromecast.setOnPlaybackFinished(async () => {
-    const nextTrack = queue.getNextTrack();
+    const nextTrack = queue.popNextTrack();  // Pop removes it from queue
     if (nextTrack) {
         console.log(`📋 Auto-advancing to: ${nextTrack.title}`);
         await playTrack(nextTrack);
