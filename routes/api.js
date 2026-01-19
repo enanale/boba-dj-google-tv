@@ -103,9 +103,6 @@ router.post('/chat', async (req, res) => {
                                 thumbnail: video.thumbnail,
                                 videoId: video.id
                             };
-
-                            response = await llm.chat(`[SYSTEM: You just played "${video.title}" by ${video.author}. Give a short, excited DJ confirmation!]`);
-                            response = response.replace(/\{[\s]*"tool"[\s]*:.*?\}/g, '').trim();
                         } else {
                             response = "Yo, I can't find any Chromecast devices! Make sure your Google TV is on and connected to the same network. 📺";
                         }
@@ -117,15 +114,13 @@ router.post('/chat', async (req, res) => {
                     response = "Oof, hit a snag casting to your TV! Make sure it's on and connected. 📺";
                 }
             } else if (toolCall.tool === 'queue_songs') {
-                // Multiple songs - generate queries and add to queue
+                // Multiple songs - use the list provided by the DJ
                 try {
-                    const { count, theme } = toolCall;
-
-                    // Generate song queries based on theme
-                    const songQueries = await llm.generateSongQueries(count, theme);
+                    const { songs, theme } = toolCall;
+                    const songQueries = songs || [];
 
                     if (songQueries.length === 0) {
-                        response = `Hmm, I couldn't think of songs for "${theme}". Try a different theme? 🤔`;
+                        response = "I was gonna queue some tracks, but I lost my train of thought! Try again? 🧋";
                     } else {
                         // Search YouTube for each query and add to queue
                         const devices = await chromecast.getDevices();
@@ -183,11 +178,8 @@ router.post('/chat', async (req, res) => {
 
                             // Build a list of actual songs that were queued
                             const allTracks = firstTrack ? [firstTrack, ...queuedSongs] : queuedSongs;
-                            const songList = allTracks.map((t, i) => `${i + 1}. "${t.title}"`).join(', ');
-
                             const totalQueued = allTracks.length;
-                            response = await llm.chat(`[SYSTEM: You just queued ${totalQueued} songs for the theme "${theme}". Here are the ACTUAL songs you found: ${songList}. The first one "${allTracks[0]?.title}" is now playing. Give an excited DJ announcement mentioning these SPECIFIC songs by name!]`);
-                            response = response.replace(/\{[\s]*"tool"[\s]*:.*?\}/g, '').trim();
+                            console.log(`📋 Queued ${totalQueued} songs successfully.`);
                         }
                     }
                 } catch (queueError) {

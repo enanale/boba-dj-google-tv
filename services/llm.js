@@ -8,9 +8,12 @@ Your personality:
 - Upbeat, enthusiastic, and playful
 - You love bubble tea and music puns
 - You speak with DJ-style flair ("Alright!", "Let's goooo!", "Dropping this banger!")
-- Keep responses SHORT (1-2 sentences max, no long lists)
+- Keep responses SHORT but meaningful
 - NO markdown formatting (no *, **, bullet points, or lists)
 - Just plain text with emojis
+- BE CREATIVE: You suggest interesting, diverse tracks and EXPLAIN why you chose them if the user asks for more info!
+
+IMPORTANT: Always include a verbal response (hype, explanation, jokes) followed by the tool call JSON. Never send only the JSON.
 
 You manage a music queue and can play songs. You have these tools:
 
@@ -18,14 +21,14 @@ You manage a music queue and can play songs. You have these tools:
 {"tool": "play_song", "query": "<search query>"}
 
 2. Add multiple songs to the queue:
-{"tool": "queue_songs", "count": <number>, "theme": "<theme/description>"}
+{"tool": "queue_songs", "songs": ["Artist - Song Title", "Another Artist - Song", ...]}
 
 Examples:
-- "Play Daft Punk" → {"tool": "play_song", "query": "Daft Punk Get Lucky"}
-- "Play 5 songs about the ocean" → {"tool": "queue_songs", "count": 5, "theme": "songs about the ocean"}
+- "Play Daft Punk" → "Got some Daft Punk coming at ya! Let's get lucky! {"tool": "play_song", "query": "Daft Punk Get Lucky"}"
+- "Play 5 ocean songs" → "Diving into the deep blue with these 5 wave-makers! {"tool": "queue_songs", "songs": ["The Beach Boys - Surfin' USA", "Otis Redding - (Sittin' On) The Dock of the Bay", "Jack Johnson - Banana Pancakes", "The Beatles - Octopus's Garden", "Enya - Orinoco Flow"]}"
 
 If the user is just chatting and NOT asking to play music, respond naturally without a tool call.
-Keep it short and fun! 🎵`;
+Keep it short, creative, and fun! 🎵`;
 
 let systemPrompt = DEFAULT_SYSTEM_PROMPT;
 let conversationHistory = [];
@@ -90,25 +93,32 @@ async function chat(userMessage) {
 
 // Parse tool calls from LLM response
 function parseToolCall(response) {
-    // Look for queue_songs tool call
-    const queueMatch = response.match(/\{[\s]*"tool"[\s]*:[\s]*"queue_songs"[\s]*,[\s]*"count"[\s]*:[\s]*(\d+)[\s]*,[\s]*"theme"[\s]*:[\s]*"([^"]+)"[\s]*\}/);
+    try {
+        // Look for any JSON-like structure in the response
+        const jsonMatch = response.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) return null;
 
-    if (queueMatch) {
-        return {
-            tool: 'queue_songs',
-            count: parseInt(queueMatch[1]),
-            theme: queueMatch[2]
-        };
-    }
+        const toolCall = JSON.parse(jsonMatch[0]);
 
-    // Look for play_song tool call
-    const playMatch = response.match(/\{[\s]*"tool"[\s]*:[\s]*"play_song"[\s]*,[\s]*"query"[\s]*:[\s]*"([^"]+)"[\s]*\}/);
+        if (toolCall.tool === 'queue_songs') {
+            // Support both old and new formats for backward compatibility during transition
+            const songs = toolCall.songs || [];
+            return {
+                tool: 'queue_songs',
+                songs: Array.isArray(songs) ? songs : [songs],
+                count: toolCall.count || songs.length,
+                theme: toolCall.theme || 'DJ\'s Choice'
+            };
+        }
 
-    if (playMatch) {
-        return {
-            tool: 'play_song',
-            query: playMatch[1]
-        };
+        if (toolCall.tool === 'play_song') {
+            return {
+                tool: 'play_song',
+                query: toolCall.query
+            };
+        }
+    } catch (err) {
+        console.error('Error parsing tool call:', err);
     }
 
     return null;
