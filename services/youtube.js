@@ -37,6 +37,12 @@ async function search(query, limit = 5) {
  * @returns {Promise<object>} Object with stream URL and format info
  */
 async function getStreamUrl(videoId) {
+    // Security: Validate videoId to prevent command injection
+    // YouTube video IDs are 11 characters, alphanumeric with - and _
+    if (!videoId || !/^[a-zA-Z0-9_-]{10,12}$/.test(videoId)) {
+        throw new Error(`Invalid video ID: ${videoId}`);
+    }
+
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
     try {
