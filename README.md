@@ -7,32 +7,29 @@ A playful, AI-powered DJ chatbot that casts YouTube music to your Google TV or C
 - 🎵 **Chat with DJ Boba** – An AI DJ with a fun, customizable personality
 - 🔍 **YouTube Search** – Find any song, no API keys needed
 - 📺 **Chromecast Integration** – Cast directly to your Google TV or speakers
-- 🎨 **Boba-themed UI** – Vibrant, playful interface with animations
+- 📋 **Playlist Queue** – "Play 5 songs about robots" builds a themed playlist
+- ⏭️ **Auto-Advance** – Next song plays automatically when current ends
+- 🎨 **Boba-themed UI** – Vibrant, playful dark-mode interface
 
 ## Quick Start
 
-### 1. Prerequisites
+### Prerequisites
 
 - [Node.js](https://nodejs.org/) v18+
-- [Ollama](https://ollama.ai/) running locally with a model (e.g., `ollama run llama3.1`)
+- [Ollama](https://ollama.ai/) running locally (`ollama run llama3.1`)
+- [yt-dlp](https://github.com/yt-dlp/yt-dlp) (`brew install yt-dlp`)
 - A Chromecast or Google TV on the same network
 
-### 2. Install & Run
+### Install & Run
 
 ```bash
-# Install dependencies
 npm install
-
-# Copy env file (optional, defaults work fine)
-cp .env.example .env
-
-# Start the server
 npm start
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
 
-### 3. Select Your Device
+### Select Your Device
 
 1. Click the 📺 button in the header
 2. Choose your Google TV or Chromecast
@@ -40,36 +37,34 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## Usage
 
-Just chat with DJ Boba:
+Chat with DJ Boba:
 
-- *"Play some Daft Punk"*
-- *"I need chill vibes"*
-- *"Drop a banger!"*
+- *"Play some Daft Punk"* – Plays immediately
+- *"Play 5 songs about the ocean"* – Queues a themed playlist
+- *"Skip"* – Use the queue modal to skip tracks
 
-DJ Boba will search YouTube and cast the video to your selected device.
-
-## Customizing the DJ
-
-Click the ⚙️ button to edit DJ Boba's personality. Change the system prompt to create your own unique DJ persona!
+Click the 📋 button to view and manage the queue.
 
 ## Tech Stack
 
-- **Backend**: Node.js + Express
-- **Frontend**: Vanilla HTML/CSS/JS
-- **AI**: Ollama (local LLM)
-- **Music**: YouTube (via `ytsr`)
-- **Casting**: Chromecast protocol (`castv2-client`)
+| Component | Technology |
+|-----------|------------|
+| Backend | Node.js + Express |
+| Frontend | Vanilla HTML/CSS/JS |
+| AI | Ollama (local LLM) |
+| YouTube Search | `youtube-sr` |
+| Stream Extraction | `yt-dlp` |
+| Casting | `castv2-client` + SSDP |
 
 ## Troubleshooting
 
-### No devices found?
-- Make sure your Google TV/Chromecast is powered on
-- Check that your computer and TV are on the same WiFi network
+**No devices found?**
+- Ensure your Google TV/Chromecast is on and on the same WiFi
 - Click the 🔄 Refresh button in the device picker
 
-### Cast not working?
-- Try selecting the device again
-- Make sure no other app is currently casting to it
+**Cast shows blank screen?**
+- Make sure `yt-dlp` is installed: `brew install yt-dlp`
+- Try a different song – some videos may be geo-restricted
 
 ## License
 

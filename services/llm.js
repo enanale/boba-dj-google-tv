@@ -57,6 +57,8 @@ async function chat(userMessage) {
     ];
 
     try {
+        console.log(`🤖 LLM Input: "${userMessage}"`);
+
         const response = await fetch(`${OLLAMA_HOST}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -73,6 +75,8 @@ async function chat(userMessage) {
 
         const data = await response.json();
         const assistantMessage = data.message?.content || "Yo, my brain just skipped a beat! Try again?";
+
+        console.log(`🤖 LLM Output: "${assistantMessage.substring(0, 200)}${assistantMessage.length > 200 ? '...' : ''}"`);
 
         // Add assistant response to history
         conversationHistory.push({ role: 'assistant', content: assistantMessage });
@@ -127,6 +131,8 @@ Example format:
 Be creative and pick diverse, interesting songs that fit the theme!`;
 
     try {
+        console.log(`🎵 Song Query Request: ${count} songs for theme "${theme}"`);
+
         const response = await fetch(`${OLLAMA_HOST}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -146,6 +152,8 @@ Be creative and pick diverse, interesting songs that fit the theme!`;
 
         const data = await response.json();
         const content = data.message?.content || '[]';
+
+        console.log(`🎵 Song Query LLM Response: ${content}`);
 
         // Extract JSON array from response
         const jsonMatch = content.match(/\[[\s\S]*\]/);
