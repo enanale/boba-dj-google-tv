@@ -1,189 +1,230 @@
+const http = require('http');
+const dgram = require('dgram');
 const Client = require('castv2-client').Client;
 const DefaultMediaReceiver = require('castv2-client').DefaultMediaReceiver;
-const mdns = require('mdns-js');
 
 // Store discovered devices
 let discoveredDevices = [];
-let currentPlayer = null;
-let currentClient = null;
+let selectedDeviceId = null;
 let isPlaying = false;
 let currentMedia = null;
+let currentClient = null;
+
+// SSDP discovery settings
+const SSDP_ADDRESS = '239.255.255.250';
+const SSDP_PORT = 1900;
+const DIAL_URN = 'urn:dial-multiscreen-org:service:dial:1';
 
 /**
- * Discover Chromecast devices on the network
- * @param {number} timeout - Discovery timeout in ms (default 5000)
- * @returns {Promise<Array>} Array of discovered devices
+ * Discover DIAL devices (Chromecast, Google TV) on the network
  */
 async function discoverDevices(timeout = 5000) {
     return new Promise((resolve) => {
         discoveredDevices = [];
+        const seen = new Set();
 
-        try {
-            const browser = mdns.createBrowser(mdns.tcp('googlecast'));
+        const socket = dgram.createSocket({ type: 'udp4', reuseAddr: true });
 
-            browser.on('ready', () => {
-                browser.discover();
-            });
+        const searchMessage = [
+            'M-SEARCH * HTTP/1.1',
+            `HOST: ${SSDP_ADDRESS}:${SSDP_PORT}`,
+            'MAN: "ssdp:discover"',
+            'MX: 3',
+            `ST: ${DIAL_URN}`,
+            '',
+            ''
+        ].join('\r\n');
 
-            browser.on('update', (service) => {
-                if (service.addresses && service.addresses.length > 0) {
-                    const device = {
-                        id: service.fullname || service.host,
-                        name: service.txt?.find(t => t.startsWith('fn='))?.replace('fn=', '') || service.host || 'Unknown Device',
-                        host: service.addresses[0],
-                        port: service.port || 8009,
-                        type: service.txt?.find(t => t.startsWith('md='))?.replace('md=', '') || 'Chromecast'
-                    };
+        socket.on('message', async (msg, rinfo) => {
+            const response = msg.toString();
+            const locationMatch = response.match(/LOCATION:\s*(.+)/i);
+            if (!locationMatch) return;
 
-                    // Avoid duplicates
-                    if (!discoveredDevices.find(d => d.host === device.host)) {
-                        discoveredDevices.push(device);
-                        console.log(`📺 Found: ${device.name} (${device.host})`);
-                    }
+            const location = locationMatch[1].trim();
+            if (seen.has(location)) return;
+            seen.add(location);
+
+            try {
+                const deviceInfo = await fetchDeviceInfo(location);
+                if (deviceInfo) {
+                    discoveredDevices.push(deviceInfo);
+                    console.log(`📺 Found: ${deviceInfo.name} (${deviceInfo.host})`);
                 }
-            });
+            } catch (e) { }
+        });
 
-            setTimeout(() => {
-                browser.stop();
-                resolve(discoveredDevices);
-            }, timeout);
-        } catch (error) {
-            console.error('mDNS discovery error:', error);
+        socket.on('error', (err) => {
+            console.error('SSDP error:', err);
+        });
+
+        socket.bind(() => {
+            socket.addMembership(SSDP_ADDRESS);
+            socket.send(searchMessage, 0, searchMessage.length, SSDP_PORT, SSDP_ADDRESS);
+        });
+
+        setTimeout(() => {
+            try { socket.close(); } catch (e) { }
             resolve(discoveredDevices);
-        }
+        }, timeout);
     });
 }
 
 /**
- * Get cached devices or discover new ones
- * @returns {Promise<Array>} Array of devices
+ * Fetch device info from DIAL device description URL
  */
-async function getDevices() {
-    if (discoveredDevices.length === 0) {
-        await discoverDevices();
-    }
-    return discoveredDevices;
+async function fetchDeviceInfo(location) {
+    return new Promise((resolve) => {
+        const timeout = setTimeout(() => resolve(null), 3000);
+
+        try {
+            const url = new URL(location);
+
+            const req = http.get(location, (res) => {
+                let data = '';
+                res.on('data', chunk => data += chunk);
+                res.on('end', () => {
+                    clearTimeout(timeout);
+
+                    const nameMatch = data.match(/<friendlyName>([^<]+)<\/friendlyName>/);
+                    const modelMatch = data.match(/<modelName>([^<]+)<\/modelName>/);
+
+                    if (nameMatch) {
+                        resolve({
+                            id: url.host,
+                            name: nameMatch[1],
+                            host: url.hostname,
+                            port: 8009,
+                            type: modelMatch ? modelMatch[1] : 'Chromecast'
+                        });
+                    } else {
+                        resolve(null);
+                    }
+                });
+            });
+
+            req.on('error', () => {
+                clearTimeout(timeout);
+                resolve(null);
+            });
+        } catch (e) {
+            clearTimeout(timeout);
+            resolve(null);
+        }
+    });
 }
 
-/**
- * Refresh the device list
- * @returns {Promise<Array>} Array of devices
- */
+function getDevices() {
+    return discoveredDevices.map(d => ({
+        id: d.id,
+        name: d.name,
+        host: d.host,
+        type: d.type,
+        is_active: selectedDeviceId === d.id
+    }));
+}
+
 async function refreshDevices() {
     discoveredDevices = [];
-    return discoverDevices();
+    return discoverDevices(5000);
 }
 
 /**
- * Cast a YouTube video to a Chromecast device
- * @param {string} videoId - YouTube video ID
- * @param {string} deviceHost - Device IP address
- * @param {object} metadata - Video metadata (title, author, thumbnail)
- * @returns {Promise<void>}
+ * Cast a video stream to a Chromecast device
+ * @param {string} streamUrl - Direct video stream URL
+ * @param {string} contentType - MIME type (e.g., 'video/mp4')
+ * @param {string} deviceId - Device ID
+ * @param {object} metadata - Video metadata
  */
-async function castYouTube(videoId, deviceHost, metadata = {}) {
-    return new Promise((resolve, reject) => {
-        // Close existing connection if any
-        if (currentClient) {
-            try {
-                currentClient.close();
-            } catch (e) {
-                // Ignore close errors
-            }
-        }
+async function castStream(streamUrl, contentType, deviceId, metadata = {}) {
+    const device = discoveredDevices.find(d => d.id === deviceId || d.host === deviceId);
 
+    if (!device) {
+        throw new Error(`Device not found: ${deviceId}`);
+    }
+
+    selectedDeviceId = device.id;
+
+    // Close existing connection
+    if (currentClient) {
+        try { currentClient.close(); } catch (e) { }
+    }
+
+    return new Promise((resolve, reject) => {
         const client = new Client();
         currentClient = client;
 
         client.on('error', (err) => {
-            console.error('Chromecast client error:', err);
-            client.close();
+            console.error('Cast client error:', err);
             reject(err);
         });
 
-        console.log(`📺 Connecting to ${deviceHost}...`);
+        console.log(`📺 Connecting to ${device.name} (${device.host})...`);
 
-        client.connect(deviceHost, () => {
-            console.log(`📺 Connected! Launching YouTube...`);
+        client.connect(device.host, () => {
+            console.log(`📺 Connected! Launching media player...`);
 
-            // Use the YouTube receiver app
             client.launch(DefaultMediaReceiver, (err, player) => {
                 if (err) {
-                    console.error('Failed to launch:', err);
+                    console.error('Failed to launch receiver:', err);
                     client.close();
                     return reject(err);
                 }
 
-                currentPlayer = player;
-
                 const media = {
-                    contentId: videoId,
-                    contentType: 'video/youtube',
+                    contentId: streamUrl,
+                    contentType: contentType,
                     streamType: 'BUFFERED',
                     metadata: {
                         type: 0,
                         metadataType: 0,
-                        title: metadata.title || 'YouTube Video',
+                        title: metadata.title || 'Now Playing',
                         subtitle: metadata.author || '',
                         images: metadata.thumbnail ? [{ url: metadata.thumbnail }] : []
                     }
                 };
 
-                // For YouTube, we need to use the YouTube app URL format
-                const youtubeMedia = {
-                    contentId: `https://www.youtube.com/watch?v=${videoId}`,
-                    contentType: 'video/mp4',
-                    streamType: 'BUFFERED',
-                    metadata: media.metadata
-                };
+                console.log(`📺 Loading stream...`);
 
-                player.load(youtubeMedia, { autoplay: true }, (err, status) => {
+                player.load(media, { autoplay: true }, (err, status) => {
                     if (err) {
-                        console.error('Failed to load media:', err);
+                        console.error('Load failed:', err.message);
                         client.close();
                         return reject(err);
                     }
 
-                    console.log(`🎵 Now playing: ${metadata.title || videoId}`);
+                    console.log(`🎵 Now playing: ${metadata.title || 'Video'}`);
                     isPlaying = true;
-                    currentMedia = {
-                        ...metadata,
-                        videoId
-                    };
+                    currentMedia = { ...metadata };
                     resolve(status);
                 });
 
                 player.on('status', (status) => {
-                    isPlaying = status.playerState === 'PLAYING' || status.playerState === 'BUFFERING';
+                    if (status.playerState === 'IDLE' && status.idleReason === 'FINISHED') {
+                        isPlaying = false;
+                    } else {
+                        isPlaying = status.playerState === 'PLAYING' || status.playerState === 'BUFFERING';
+                    }
                 });
             });
         });
     });
 }
 
-/**
- * Get currently playing info
- * @returns {object|null} Current media info or null
- */
 function getNowPlaying() {
     if (isPlaying && currentMedia) {
         return {
             isPlaying: true,
             title: currentMedia.title,
             author: currentMedia.author,
-            thumbnail: currentMedia.thumbnail,
-            videoId: currentMedia.videoId
+            thumbnail: currentMedia.thumbnail
         };
     }
     return { isPlaying: false };
 }
 
-/**
- * Stop playback
- */
-function stop() {
-    if (currentPlayer) {
-        currentPlayer.stop();
+async function stop() {
+    if (currentClient) {
+        try { currentClient.close(); } catch (e) { }
         isPlaying = false;
         currentMedia = null;
     }
@@ -193,7 +234,7 @@ module.exports = {
     discoverDevices,
     getDevices,
     refreshDevices,
-    castYouTube,
+    castStream,
     getNowPlaying,
     stop
 };

@@ -38,11 +38,20 @@ router.post('/chat', async (req, res) => {
                         : devices[0];
 
                     if (targetDevice) {
-                        await chromecast.castYouTube(video.id, targetDevice.host, {
-                            title: video.title,
-                            author: video.author,
-                            thumbnail: video.thumbnail
-                        });
+                        // Get the direct stream URL using yt-dlp
+                        const streamInfo = await youtube.getStreamUrl(video.id);
+
+                        // Cast the stream to the device
+                        await chromecast.castStream(
+                            streamInfo.streamUrl,
+                            streamInfo.contentType,
+                            targetDevice.host,
+                            {
+                                title: video.title,
+                                author: video.author,
+                                thumbnail: video.thumbnail
+                            }
+                        );
 
                         songPlayed = {
                             name: video.title,
