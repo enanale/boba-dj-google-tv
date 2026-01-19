@@ -181,8 +181,12 @@ router.post('/chat', async (req, res) => {
                                 };
                             }
 
-                            const totalQueued = queuedSongs.length + (firstTrack ? 1 : 0);
-                            response = await llm.chat(`[SYSTEM: You just queued ${totalQueued} songs about "${theme}". The first one is now playing${queuedSongs.length > 0 ? ` and ${queuedSongs.length} more are in the queue` : ''}. Give an excited DJ announcement about the theme!]`);
+                            // Build a list of actual songs that were queued
+                            const allTracks = firstTrack ? [firstTrack, ...queuedSongs] : queuedSongs;
+                            const songList = allTracks.map((t, i) => `${i + 1}. "${t.title}"`).join(', ');
+
+                            const totalQueued = allTracks.length;
+                            response = await llm.chat(`[SYSTEM: You just queued ${totalQueued} songs for the theme "${theme}". Here are the ACTUAL songs you found: ${songList}. The first one "${allTracks[0]?.title}" is now playing. Give an excited DJ announcement mentioning these SPECIFIC songs by name!]`);
                             response = response.replace(/\{[\s]*"tool"[\s]*:.*?\}/g, '').trim();
                         }
                     }
