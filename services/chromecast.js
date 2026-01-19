@@ -9,11 +9,23 @@ let selectedDeviceId = null;
 let isPlaying = false;
 let currentMedia = null;
 let currentClient = null;
+let currentPlayer = null;
+
+// Callback for when playback finishes
+let onPlaybackFinished = null;
 
 // SSDP discovery settings
 const SSDP_ADDRESS = '239.255.255.250';
 const SSDP_PORT = 1900;
 const DIAL_URN = 'urn:dial-multiscreen-org:service:dial:1';
+
+/**
+ * Set callback for when playback finishes
+ * @param {Function} callback - Called when track finishes
+ */
+function setOnPlaybackFinished(callback) {
+    onPlaybackFinished = callback;
+}
 
 /**
  * Discover DIAL devices (Chromecast, Google TV) on the network
@@ -123,6 +135,10 @@ function getDevices() {
     }));
 }
 
+function getSelectedDevice() {
+    return discoveredDevices.find(d => d.id === selectedDeviceId);
+}
+
 async function refreshDevices() {
     discoveredDevices = [];
     return discoverDevices(5000);
@@ -170,6 +186,8 @@ async function castStream(streamUrl, contentType, deviceId, metadata = {}) {
                     return reject(err);
                 }
 
+                currentPlayer = player;
+
                 const media = {
                     contentId: streamUrl,
                     contentType: contentType,
@@ -200,7 +218,14 @@ async function castStream(streamUrl, contentType, deviceId, metadata = {}) {
 
                 player.on('status', (status) => {
                     if (status.playerState === 'IDLE' && status.idleReason === 'FINISHED') {
+                        console.log('📺 Playback finished');
                         isPlaying = false;
+                        currentMedia = null;
+
+                        // Trigger callback for auto-advance
+                        if (onPlaybackFinished) {
+                            onPlaybackFinished();
+                        }
                     } else {
                         isPlaying = status.playerState === 'PLAYING' || status.playerState === 'BUFFERING';
                     }
@@ -222,19 +247,27 @@ function getNowPlaying() {
     return { isPlaying: false };
 }
 
+function getIsPlaying() {
+    return isPlaying;
+}
+
 async function stop() {
     if (currentClient) {
         try { currentClient.close(); } catch (e) { }
         isPlaying = false;
         currentMedia = null;
+        currentPlayer = null;
     }
 }
 
 module.exports = {
     discoverDevices,
     getDevices,
+    getSelectedDevice,
     refreshDevices,
     castStream,
     getNowPlaying,
-    stop
+    getIsPlaying,
+    stop,
+    setOnPlaybackFinished
 };

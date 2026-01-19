@@ -20,6 +20,9 @@
                 <h1>Boba DJ</h1>
             </div>
             <div class="header-actions">
+                <button id="queueBtn" class="btn btn-secondary" title="View Queue">
+                    📋 <span id="queueCount" class="queue-count hidden">0</span>
+                </button>
                 <button id="deviceBtn" class="btn btn-secondary" title="Select TV/Speaker">
                     📺
                 </button>
@@ -52,8 +55,8 @@
                     <div class="message-avatar">🧋</div>
                     <div class="message-content">
                         <p>Yo yo yo! DJ Boba in the house! 🎵</p>
-                        <p>Tell me what you wanna hear and I'll cast it to your TV! Just say something like "Play some
-                            Daft Punk" or "I need chill vibes"~</p>
+                        <p>Tell me what you wanna hear! Try "Play some Daft Punk" or "Queue 5 songs about the ocean" 🌊
+                        </p>
                     </div>
                 </div>
             </div>
@@ -110,6 +113,32 @@
                 <div class="settings-actions">
                     <button id="resetPersona" class="btn btn-secondary">Reset to Default</button>
                     <button id="savePersona" class="btn btn-primary">Save Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Queue Modal -->
+    <div id="queueModal" class="modal hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📋 DJ's Queue</h2>
+                <button class="modal-close" data-modal="queueModal">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="currentTrackSection" class="current-track-section hidden">
+                    <h3>Now Playing</h3>
+                    <div id="currentTrack" class="queue-item current"></div>
+                </div>
+                <div class="queue-section">
+                    <h3>Up Next</h3>
+                    <div id="queueList" class="queue-list">
+                        <p class="loading">Queue is empty</p>
+                    </div>
+                </div>
+                <div class="queue-actions">
+                    <button id="skipBtn" class="btn btn-secondary">⏭️ Skip</button>
+                    <button id="clearQueueBtn" class="btn btn-secondary">🗑️ Clear Queue</button>
                 </div>
             </div>
         </div>

@@ -2,15 +2,23 @@
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
+const queueBtn = document.getElementById('queueBtn');
+const queueCount = document.getElementById('queueCount');
 const deviceBtn = document.getElementById('deviceBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const nowPlaying = document.getElementById('nowPlaying');
 const albumArt = document.getElementById('albumArt');
 const trackName = document.getElementById('trackName');
 const artistName = document.getElementById('artistName');
+const queueModal = document.getElementById('queueModal');
 const deviceModal = document.getElementById('deviceModal');
 const settingsModal = document.getElementById('settingsModal');
 const deviceList = document.getElementById('deviceList');
+const queueList = document.getElementById('queueList');
+const currentTrackSection = document.getElementById('currentTrackSection');
+const currentTrackEl = document.getElementById('currentTrack');
+const skipBtn = document.getElementById('skipBtn');
+const clearQueueBtn = document.getElementById('clearQueueBtn');
 const refreshDevices = document.getElementById('refreshDevices');
 const personaInput = document.getElementById('personaInput');
 const savePersona = document.getElementById('savePersona');
@@ -36,6 +44,10 @@ function setupEventListeners() {
     });
 
     // Modals
+    queueBtn.addEventListener('click', () => {
+        loadQueue();
+        openModal('queueModal');
+    });
     deviceBtn.addEventListener('click', () => openModal('deviceModal'));
     settingsBtn.addEventListener('click', () => {
         loadPersona();
@@ -55,6 +67,10 @@ function setupEventListeners() {
 
     // Devices
     refreshDevices.addEventListener('click', () => loadDevices(true));
+
+    // Queue actions
+    skipBtn.addEventListener('click', skipTrack);
+    clearQueueBtn.addEventListener('click', clearQueue);
 
     // Persona
     savePersona.addEventListener('click', savePersonaSettings);
@@ -92,6 +108,11 @@ async function sendMessage() {
         // Update now playing if song was played
         if (data.songPlayed) {
             updateNowPlaying(data.songPlayed);
+        }
+
+        // Update queue count
+        if (data.queueLength !== undefined) {
+            updateQueueCount(data.queueLength);
         }
     } catch (err) {
         removeTypingIndicator(typingId);
@@ -169,6 +190,11 @@ async function updateNowPlayingFromApi() {
         } else {
             nowPlaying.classList.add('hidden');
         }
+
+        // Update queue count
+        if (data.queueLength !== undefined) {
+            updateQueueCount(data.queueLength);
+        }
     } catch (err) {
         // Silently fail
     }
@@ -179,6 +205,100 @@ function updateNowPlaying(track) {
     albumArt.src = track.albumArt || track.thumbnail || '';
     trackName.textContent = track.name || track.title;
     artistName.textContent = track.artist || track.author || '';
+}
+
+function updateQueueCount(count) {
+    if (count > 0) {
+        queueCount.textContent = count;
+        queueCount.classList.remove('hidden');
+    } else {
+        queueCount.classList.add('hidden');
+    }
+}
+
+// ===== Queue =====
+async function loadQueue() {
+    try {
+        const res = await fetch('/api/queue');
+        const data = await res.json();
+
+        // Show current track
+        if (data.currentTrack) {
+            currentTrackSection.classList.remove('hidden');
+            currentTrackEl.innerHTML = renderQueueItem(data.currentTrack, -1, true);
+        } else {
+            currentTrackSection.classList.add('hidden');
+        }
+
+        // Show queue
+        if (data.queue && data.queue.length > 0) {
+            queueList.innerHTML = data.queue.map((track, i) => renderQueueItem(track, i, false)).join('');
+
+            // Add remove handlers
+            queueList.querySelectorAll('.queue-item-remove').forEach(btn => {
+                btn.addEventListener('click', () => removeFromQueue(parseInt(btn.dataset.index)));
+            });
+        } else {
+            queueList.innerHTML = '<p class="loading">Queue is empty. Ask DJ Boba to add some songs!</p>';
+        }
+
+        updateQueueCount(data.queueLength);
+    } catch (err) {
+        queueList.innerHTML = '<p class="loading">Failed to load queue.</p>';
+    }
+}
+
+function renderQueueItem(track, index, isCurrent) {
+    const thumbnail = track.thumbnail || '';
+    return `
+        <div class="queue-item ${isCurrent ? 'current' : ''}">
+            ${!isCurrent ? `<span class="queue-item-number">${index + 1}</span>` : ''}
+            ${thumbnail ? `<img src="${thumbnail}" alt="" class="queue-item-thumbnail">` : ''}
+            <div class="queue-item-info">
+                <div class="queue-item-title">${escapeHtml(track.title || 'Unknown')}</div>
+                <div class="queue-item-author">${escapeHtml(track.author || '')}</div>
+            </div>
+            ${!isCurrent ? `<button class="queue-item-remove" data-index="${index}" title="Remove">×</button>` : ''}
+        </div>
+    `;
+}
+
+async function skipTrack() {
+    try {
+        const res = await fetch('/api/queue/skip', { method: 'POST' });
+        const data = await res.json();
+
+        if (data.success && data.nowPlaying) {
+            addMessage(`Skipped to: ${data.nowPlaying.title} ⏭️`, 'bot');
+            updateNowPlaying(data.nowPlaying);
+        } else {
+            addMessage("Nothing else in the queue to skip to! 🤷", 'bot');
+        }
+
+        loadQueue();
+    } catch (err) {
+        addMessage("Failed to skip track 😅", 'bot');
+    }
+}
+
+async function clearQueue() {
+    try {
+        await fetch('/api/queue/clear', { method: 'POST' });
+        addMessage("Queue cleared! 🗑️", 'bot');
+        loadQueue();
+        updateQueueCount(0);
+    } catch (err) {
+        addMessage("Failed to clear queue 😅", 'bot');
+    }
+}
+
+async function removeFromQueue(index) {
+    try {
+        await fetch(`/api/queue/${index}`, { method: 'DELETE' });
+        loadQueue();
+    } catch (err) {
+        console.error('Failed to remove from queue:', err);
+    }
 }
 
 // ===== Devices =====
