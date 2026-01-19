@@ -2,7 +2,6 @@
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
 const sendBtn = document.getElementById('sendBtn');
-const authBtn = document.getElementById('authBtn');
 const deviceBtn = document.getElementById('deviceBtn');
 const settingsBtn = document.getElementById('settingsBtn');
 const nowPlaying = document.getElementById('nowPlaying');
@@ -18,13 +17,12 @@ const savePersona = document.getElementById('savePersona');
 const resetPersona = document.getElementById('resetPersona');
 
 // ===== State =====
-let isAuthenticated = false;
 let nowPlayingInterval = null;
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
-    checkAuthStatus();
     setupEventListeners();
+    startNowPlayingPolling();
 });
 
 function setupEventListeners() {
@@ -36,9 +34,6 @@ function setupEventListeners() {
             sendMessage();
         }
     });
-
-    // Auth
-    authBtn.addEventListener('click', handleAuth);
 
     // Modals
     deviceBtn.addEventListener('click', () => openModal('deviceModal'));
@@ -59,45 +54,11 @@ function setupEventListeners() {
     });
 
     // Devices
-    refreshDevices.addEventListener('click', loadDevices);
+    refreshDevices.addEventListener('click', () => loadDevices(true));
 
     // Persona
     savePersona.addEventListener('click', savePersonaSettings);
     resetPersona.addEventListener('click', resetPersonaSettings);
-}
-
-// ===== Auth =====
-async function checkAuthStatus() {
-    try {
-        const res = await fetch('/auth/status');
-        const data = await res.json();
-        isAuthenticated = data.authenticated;
-        updateAuthUI();
-
-        if (isAuthenticated) {
-            startNowPlayingPolling();
-        }
-    } catch (err) {
-        console.error('Auth check failed:', err);
-    }
-}
-
-function updateAuthUI() {
-    if (isAuthenticated) {
-        authBtn.textContent = 'Connected ✓';
-        authBtn.classList.remove('btn-primary');
-        authBtn.classList.add('btn-secondary');
-    } else {
-        authBtn.textContent = 'Login with Spotify';
-        authBtn.classList.add('btn-primary');
-        authBtn.classList.remove('btn-secondary');
-    }
-}
-
-function handleAuth() {
-    if (!isAuthenticated) {
-        window.location.href = '/login';
-    }
 }
 
 // ===== Chat =====
@@ -215,9 +176,9 @@ async function updateNowPlayingFromApi() {
 
 function updateNowPlaying(track) {
     nowPlaying.classList.remove('hidden');
-    albumArt.src = track.albumArt || '';
-    trackName.textContent = track.name;
-    artistName.textContent = track.artist;
+    albumArt.src = track.albumArt || track.thumbnail || '';
+    trackName.textContent = track.name || track.title;
+    artistName.textContent = track.artist || track.author || '';
 }
 
 // ===== Devices =====
@@ -232,11 +193,14 @@ function closeModal(modalId) {
     document.getElementById(modalId).classList.add('hidden');
 }
 
-async function loadDevices() {
-    deviceList.innerHTML = '<p class="loading">Searching for devices...</p>';
+async function loadDevices(refresh = false) {
+    deviceList.innerHTML = '<p class="loading">Searching for Chromecast devices...</p>';
 
     try {
-        const res = await fetch('/api/devices');
+        const endpoint = refresh ? '/api/devices/refresh' : '/api/devices';
+        const method = refresh ? 'POST' : 'GET';
+
+        const res = await fetch(endpoint, { method });
         const data = await res.json();
 
         if (data.devices && data.devices.length > 0) {
@@ -247,35 +211,36 @@ async function loadDevices() {
                         <div class="device-name">${escapeHtml(device.name)}</div>
                         <div class="device-type">${device.type}</div>
                     </div>
-                    ${device.is_active ? '<span style="color: var(--success)">●</span>' : ''}
+                    ${device.is_active ? '<span style="color: var(--success)">● Selected</span>' : ''}
                 </div>
             `).join('');
 
             // Add click handlers
             deviceList.querySelectorAll('.device-item').forEach(item => {
-                item.addEventListener('click', () => selectDevice(item.dataset.id));
+                item.addEventListener('click', () => selectDevice(item.dataset.id, item.querySelector('.device-name').textContent));
             });
         } else {
-            deviceList.innerHTML = '<p class="loading">No devices found. Open Spotify on a device first!</p>';
+            deviceList.innerHTML = `
+                <p class="loading">No Chromecast devices found.</p>
+                <p class="loading" style="font-size: 0.85rem; margin-top: 8px;">
+                    Make sure your Google TV is on and connected to the same WiFi network.
+                </p>
+            `;
         }
     } catch (err) {
-        deviceList.innerHTML = '<p class="loading">Failed to load devices. Are you logged in?</p>';
+        deviceList.innerHTML = '<p class="loading">Failed to search for devices.</p>';
     }
 }
 
 function getDeviceIcon(type) {
-    const icons = {
-        computer: '💻',
-        smartphone: '📱',
-        speaker: '🔊',
-        tv: '📺',
-        cast_video: '📺',
-        cast_audio: '🔊'
-    };
-    return icons[type.toLowerCase()] || '🎵';
+    const typeLower = (type || '').toLowerCase();
+    if (typeLower.includes('tv') || typeLower.includes('chromecast')) return '📺';
+    if (typeLower.includes('speaker') || typeLower.includes('audio')) return '🔊';
+    if (typeLower.includes('display') || typeLower.includes('hub')) return '🖼️';
+    return '📺';
 }
 
-async function selectDevice(deviceId) {
+async function selectDevice(deviceId, deviceName) {
     try {
         await fetch('/api/devices/select', {
             method: 'POST',
@@ -283,9 +248,9 @@ async function selectDevice(deviceId) {
             body: JSON.stringify({ deviceId })
         });
         closeModal('deviceModal');
-        addMessage("Device switched! Ready to spin some tunes! 🎧", 'bot');
+        addMessage(`Got it! I'll cast to "${deviceName}" 📺`, 'bot');
     } catch (err) {
-        alert('Failed to switch device');
+        alert('Failed to select device');
     }
 }
 

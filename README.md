@@ -1,12 +1,12 @@
 # 🧋 Boba DJ
 
-A playful, AI-powered DJ chatbot that controls Spotify playback on your devices.
+A playful, AI-powered DJ chatbot that casts YouTube music to your Google TV or Chromecast.
 
 ## Features
 
 - 🎵 **Chat with DJ Boba** – An AI DJ with a fun, customizable personality
-- 🔊 **Spotify Integration** – Search and play music via natural language
-- 📺 **Device Picker** – Choose which Spotify Connect device to play on (Google TV, speakers, etc.)
+- 🔍 **YouTube Search** – Find any song, no API keys needed
+- 📺 **Chromecast Integration** – Cast directly to your Google TV or speakers
 - 🎨 **Boba-themed UI** – Vibrant, playful interface with animations
 
 ## Quick Start
@@ -14,33 +14,29 @@ A playful, AI-powered DJ chatbot that controls Spotify playback on your devices.
 ### 1. Prerequisites
 
 - [Node.js](https://nodejs.org/) v18+
-- [Ollama](https://ollama.ai/) running locally with a model (e.g., `ollama run llama3`)
-- A [Spotify Developer App](https://developer.spotify.com/dashboard)
+- [Ollama](https://ollama.ai/) running locally with a model (e.g., `ollama run llama3.1`)
+- A Chromecast or Google TV on the same network
 
-### 2. Spotify Setup
-
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new app
-3. Add `http://localhost:3000/callback` as a Redirect URI
-4. Copy your **Client ID** and **Client Secret**
-
-### 3. Configuration
+### 2. Install & Run
 
 ```bash
-# Copy the example env file
+# Install dependencies
+npm install
+
+# Copy env file (optional, defaults work fine)
 cp .env.example .env
 
-# Edit .env with your Spotify credentials
-```
-
-### 4. Install & Run
-
-```bash
-npm install
+# Start the server
 npm start
 ```
 
-Open [http://localhost:3000](http://localhost:3000) and log in with Spotify!
+Open [http://localhost:3000](http://localhost:3000)
+
+### 3. Select Your Device
+
+1. Click the 📺 button in the header
+2. Choose your Google TV or Chromecast
+3. Start chatting!
 
 ## Usage
 
@@ -49,6 +45,8 @@ Just chat with DJ Boba:
 - *"Play some Daft Punk"*
 - *"I need chill vibes"*
 - *"Drop a banger!"*
+
+DJ Boba will search YouTube and cast the video to your selected device.
 
 ## Customizing the DJ
 
@@ -59,7 +57,19 @@ Click the ⚙️ button to edit DJ Boba's personality. Change the system prompt 
 - **Backend**: Node.js + Express
 - **Frontend**: Vanilla HTML/CSS/JS
 - **AI**: Ollama (local LLM)
-- **Music**: Spotify Web API
+- **Music**: YouTube (via `ytsr`)
+- **Casting**: Chromecast protocol (`castv2-client`)
+
+## Troubleshooting
+
+### No devices found?
+- Make sure your Google TV/Chromecast is powered on
+- Check that your computer and TV are on the same WiFi network
+- Click the 🔄 Refresh button in the device picker
+
+### Cast not working?
+- Try selecting the device again
+- Make sure no other app is currently casting to it
 
 ## License
 

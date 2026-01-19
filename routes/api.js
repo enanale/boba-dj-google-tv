@@ -1,7 +1,11 @@
 const express = require('express');
 const router = express.Router();
-const spotify = require('../services/spotify');
+const youtube = require('../services/youtube');
+const chromecast = require('../services/chromecast');
 const llm = require('../services/llm');
+
+// Selected device for casting
+let selectedDevice = null;
 
 // Chat endpoint
 router.post('/chat', async (req, res) => {
@@ -21,39 +25,44 @@ router.post('/chat', async (req, res) => {
 
         if (toolCall && toolCall.tool === 'play_song') {
             try {
-                // Search for the song
-                const searchResults = await spotify.search(toolCall.query);
-                const tracks = searchResults.tracks?.items || [];
+                // Search YouTube for the song
+                const videos = await youtube.search(toolCall.query + ' official audio');
 
-                if (tracks.length > 0) {
-                    const track = tracks[0];
+                if (videos.length > 0) {
+                    const video = videos[0];
 
-                    // Get active device
-                    const devices = await spotify.getDevices();
-                    const activeDevice = devices.find(d => d.is_active) || devices[0];
+                    // Get devices and find selected or first available
+                    const devices = await chromecast.getDevices();
+                    const targetDevice = selectedDevice
+                        ? devices.find(d => d.id === selectedDevice)
+                        : devices[0];
 
-                    if (activeDevice) {
-                        await spotify.play(track.uri, activeDevice.id);
+                    if (targetDevice) {
+                        await chromecast.castYouTube(video.id, targetDevice.host, {
+                            title: video.title,
+                            author: video.author,
+                            thumbnail: video.thumbnail
+                        });
+
                         songPlayed = {
-                            name: track.name,
-                            artist: track.artists.map(a => a.name).join(', '),
-                            album: track.album.name,
-                            albumArt: track.album.images[0]?.url
+                            name: video.title,
+                            artist: video.author,
+                            thumbnail: video.thumbnail,
+                            videoId: video.id
                         };
 
                         // Generate a confirmation response
-                        response = await llm.chat(`[SYSTEM: You just played "${track.name}" by ${track.artists[0].name}. Give a short, excited DJ confirmation!]`);
-                        // Clean up the tool call from the response
+                        response = await llm.chat(`[SYSTEM: You just played "${video.title}" by ${video.author} on the TV. Give a short, excited DJ confirmation!]`);
                         response = response.replace(/\{[\s]*"tool"[\s]*:.*?\}/g, '').trim();
                     } else {
-                        response = "Yo, I can't find any speakers! Make sure Spotify is open on your device. 🎧";
+                        response = "Yo, I can't find any Chromecast devices! Make sure your Google TV is on and connected to the same network. 📺";
                     }
                 } else {
-                    response = `Hmm, couldn't find anything for "${toolCall.query}". Try another track? 🤔`;
+                    response = `Hmm, couldn't find anything for "${toolCall.query}" on YouTube. Try another track? 🤔`;
                 }
-            } catch (spotifyError) {
-                console.error('Spotify error:', spotifyError);
-                response = "Oof, hit a snag with Spotify! Make sure you're logged in and a device is active. 🎵";
+            } catch (castError) {
+                console.error('Cast error:', castError);
+                response = "Oof, hit a snag casting to your TV! Make sure it's on and connected. 📺";
             }
         }
 
@@ -73,49 +82,60 @@ router.post('/chat', async (req, res) => {
     }
 });
 
-// Get available devices
+// Get available Chromecast devices
 router.get('/devices', async (req, res) => {
     try {
-        const devices = await spotify.getDevices();
-        res.json({ devices });
+        const devices = await chromecast.getDevices();
+        res.json({
+            devices: devices.map(d => ({
+                id: d.id,
+                name: d.name,
+                type: d.type,
+                is_active: selectedDevice === d.id
+            }))
+        });
     } catch (error) {
         console.error('Devices error:', error);
         res.status(500).json({ error: 'Failed to fetch devices', devices: [] });
     }
 });
 
-// Set active device
-router.post('/devices/select', async (req, res) => {
-    const { deviceId } = req.body;
-
+// Refresh device list
+router.post('/devices/refresh', async (req, res) => {
     try {
-        // Transfer playback to selected device
-        await spotify.play(null, deviceId);
-        res.json({ success: true });
+        const devices = await chromecast.refreshDevices();
+        res.json({
+            devices: devices.map(d => ({
+                id: d.id,
+                name: d.name,
+                type: d.type,
+                is_active: selectedDevice === d.id
+            }))
+        });
     } catch (error) {
-        console.error('Device select error:', error);
-        res.status(500).json({ error: 'Failed to select device' });
+        console.error('Refresh error:', error);
+        res.status(500).json({ error: 'Failed to refresh devices' });
     }
 });
 
-// Get current playback
-router.get('/now-playing', async (req, res) => {
-    try {
-        const current = await spotify.getCurrentlyPlaying();
-        if (current && current.item) {
-            res.json({
-                isPlaying: current.is_playing,
-                name: current.item.name,
-                artist: current.item.artists.map(a => a.name).join(', '),
-                album: current.item.album.name,
-                albumArt: current.item.album.images[0]?.url,
-                progress: current.progress_ms,
-                duration: current.item.duration_ms
-            });
-        } else {
-            res.json({ isPlaying: false });
-        }
-    } catch (error) {
+// Select a device for casting
+router.post('/devices/select', async (req, res) => {
+    const { deviceId } = req.body;
+    selectedDevice = deviceId;
+    res.json({ success: true, selectedDevice });
+});
+
+// Get current playback status
+router.get('/now-playing', (req, res) => {
+    const nowPlaying = chromecast.getNowPlaying();
+    if (nowPlaying.isPlaying) {
+        res.json({
+            isPlaying: true,
+            name: nowPlaying.title,
+            artist: nowPlaying.author,
+            albumArt: nowPlaying.thumbnail
+        });
+    } else {
         res.json({ isPlaying: false });
     }
 });

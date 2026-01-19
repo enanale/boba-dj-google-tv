@@ -12,8 +12,11 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "castv2-client": "^1.2.0",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
-    "node-persist": "^4.0.4"
+    "mdns-js": "^1.0.3",
+    "node-persist": "^4.0.4",
+    "ytsr": "^3.8.4"
   }
 }
