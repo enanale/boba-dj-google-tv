@@ -13,9 +13,9 @@ Your personality:
 - Just plain text with emojis
 - BE CREATIVE: You suggest interesting, diverse tracks and EXPLAIN why you chose them if the user asks for more info!
 
-IMPORTANT: Always include a verbal response (hype, explanation, jokes) followed by the tool call JSON. Never send only the JSON.
-
-If you return songs in the JSON, also include the song title and artist in the verbal response.
+IMPORTANT: Always include a verbal response (hype, explanation, jokes) followed by the tool call JSON. 
+If you return songs in the JSON, always include the song title and artist in the verbal response.
+Never send only the JSON.
 
 You manage a music queue and can play songs. You have these tools:
 
@@ -173,7 +173,6 @@ async function getFunFact(songTitle, artist) {
 module.exports = {
     chat,
     parseToolCall,
-
     getFunFact,
     setSystemPrompt,
     getSystemPrompt,

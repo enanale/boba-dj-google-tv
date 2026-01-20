@@ -20,12 +20,40 @@ chromecast.setOnPlaybackFinished(async () => {
 /**
  * Play a track (used for both direct play and queue auto-advance)
  */
-async function playTrack(track) {
-    const device = chromecast.getSelectedDevice();
+/**
+ * Play a track (used for both direct play and queue auto-advance)
+ * @param {Object} track - Track object
+ * @param {string} [deviceId] - Optional device ID to force playback on
+ */
+async function playTrack(track, deviceId = null) {
+    // Determine target device: argument -> global var -> service selection -> first discovered
+    let targetId = deviceId || selectedDevice;
+    let device = null;
+
+    // We treat getDevices as potentially async to be safe, though implementation is sync
+    const devices = await chromecast.getDevices();
+
+    if (targetId) {
+        device = devices.find(d => d.id === targetId);
+    }
+
+    if (!device) {
+        device = chromecast.getSelectedDevice();
+    }
+
+    // Auto-select first if still nothing
+    if (!device && devices.length > 0) {
+        device = devices[0];
+        console.log(`📺 Auto-selecting device for playback: ${device.name}`);
+    }
+
     if (!device) {
         console.error('No device selected for playback');
         return false;
     }
+
+    // Update global selection
+    selectedDevice = device.id;
 
     try {
         // Set queue status immediately so UI updates (clearing old fact)
@@ -74,127 +102,71 @@ router.post('/chat', async (req, res) => {
         const toolCall = llm.parseToolCall(response);
 
         if (toolCall) {
-            if (toolCall.tool === 'play_song') {
-                // Single song - play immediately
-                try {
-                    const videos = await youtube.search(toolCall.query + ' official audio');
-
-                    if (videos.length > 0) {
-                        const video = videos[0];
-                        const devices = await chromecast.getDevices();
-                        const targetDevice = selectedDevice
-                            ? devices.find(d => d.id === selectedDevice)
-                            : devices[0];
-
-                        if (targetDevice) {
-                            const streamInfo = await youtube.getStreamUrl(video.id);
-                            await chromecast.castStream(
-                                streamInfo.streamUrl,
-                                streamInfo.contentType,
-                                targetDevice.host,
-                                {
-                                    title: video.title,
-                                    author: video.author,
-                                    thumbnail: video.thumbnail
-                                }
-                            );
-
-                            queue.setCurrentTrack({
-                                id: video.id,
-                                title: video.title,
-                                author: video.author,
-                                thumbnail: video.thumbnail
+            const processQueries = async (queries) => {
+                const results = [];
+                for (const q of queries) {
+                    try {
+                        const videos = await youtube.search(q);
+                        if (videos.length > 0) {
+                            results.push({
+                                id: videos[0].id,
+                                title: videos[0].title,
+                                author: videos[0].author,
+                                thumbnail: videos[0].thumbnail
                             });
-
-                            songPlayed = {
-                                name: video.title,
-                                artist: video.author,
-                                thumbnail: video.thumbnail,
-                                videoId: video.id
-                            };
-                        } else {
-                            response = "Yo, I can't find any Chromecast devices! Make sure your Google TV is on and connected to the same network. 📺";
                         }
-                    } else {
-                        response = `Hmm, couldn't find anything for "${toolCall.query}" on YouTube. Try another track? 🤔`;
+                    } catch (e) {
+                        console.error(`Search error for ${q}:`, e);
                     }
-                } catch (castError) {
-                    console.error('Cast error:', castError);
-                    response = "Oof, hit a snag casting to your TV! Make sure it's on and connected. 📺";
+                }
+                return results;
+            };
+
+            // Determine what tracks to handle
+            let tracksToProcess = [];
+            if (toolCall.tool === 'play_song') {
+                tracksToProcess = await processQueries([toolCall.query + ' official audio']);
+                if (tracksToProcess.length === 0) {
+                    response = `Hmm, couldn't find anything for "${toolCall.query}". Try again? 🤔`;
                 }
             } else if (toolCall.tool === 'queue_songs') {
-                // Multiple songs - use the list provided by the DJ
-                try {
-                    const { songs, theme } = toolCall;
-                    const songQueries = songs || [];
+                const { songs } = toolCall;
+                if (songs && songs.length > 0) {
+                    tracksToProcess = await processQueries(songs);
+                } else {
+                    response = "I lost my train of thought and didn't queue anything! 🧋";
+                }
+            }
 
-                    if (songQueries.length === 0) {
-                        response = "I was gonna queue some tracks, but I lost my train of thought! Try again? 🧋";
+            // Process tracks (Play first if idle, queue rest)
+            // Ensure we have a device by checking before loop, or let playTrack handle it
+            // playTrack now handles auto-selection, so we can check if it succeeds.
+
+            for (const track of tracksToProcess) {
+                if (!songPlayed && !chromecast.getIsPlaying()) {
+                    const success = await playTrack(track); // playTrack handles device selection
+                    if (success) {
+                        songPlayed = {
+                            name: track.title,
+                            artist: track.author,
+                            thumbnail: track.thumbnail,
+                            videoId: track.id
+                        };
                     } else {
-                        // Search YouTube for each query and add to queue
-                        const devices = await chromecast.getDevices();
-                        const targetDevice = selectedDevice
-                            ? devices.find(d => d.id === selectedDevice)
-                            : devices[0];
-
-                        if (!targetDevice) {
+                        // If play failed (e.g. no device), ensure user knows
+                        if (!selectedDevice && !chromecast.getSelectedDevice()) {
                             response = "Yo, I can't find any Chromecast devices! Make sure your Google TV is on. 📺";
-                        } else {
-                            let firstTrack = null;
-
-                            for (const query of songQueries) {
-                                const videos = await youtube.search(query);
-                                if (videos.length > 0) {
-                                    const video = videos[0];
-                                    const track = {
-                                        id: video.id,
-                                        title: video.title,
-                                        author: video.author,
-                                        thumbnail: video.thumbnail
-                                    };
-
-                                    if (!firstTrack && !chromecast.getIsPlaying()) {
-                                        // Play the first track immediately if nothing playing
-                                        firstTrack = track;
-                                    } else {
-                                        // Add to queue
-                                        queue.addToQueue(track);
-                                        queuedSongs.push(track);
-                                    }
-                                }
-                            }
-
-                            // Start playing the first track if nothing is playing
-                            if (firstTrack) {
-                                const streamInfo = await youtube.getStreamUrl(firstTrack.id);
-                                await chromecast.castStream(
-                                    streamInfo.streamUrl,
-                                    streamInfo.contentType,
-                                    targetDevice.host,
-                                    {
-                                        title: firstTrack.title,
-                                        author: firstTrack.author,
-                                        thumbnail: firstTrack.thumbnail
-                                    }
-                                );
-                                queue.setCurrentTrack(firstTrack);
-                                songPlayed = {
-                                    name: firstTrack.title,
-                                    artist: firstTrack.author,
-                                    thumbnail: firstTrack.thumbnail
-                                };
-                            }
-
-                            // Build a list of actual songs that were queued
-                            const allTracks = firstTrack ? [firstTrack, ...queuedSongs] : queuedSongs;
-                            const totalQueued = allTracks.length;
-                            console.log(`📋 Queued ${totalQueued} songs successfully.`);
+                            break;
                         }
                     }
-                } catch (queueError) {
-                    console.error('Queue error:', queueError);
-                    response = "Oof, hit a snag building that playlist! Try again? 🎵";
+                } else {
+                    queue.addToQueue(track);
+                    queuedSongs.push(track);
                 }
+            }
+
+            if (tracksToProcess.length > 0) {
+                console.log(`📋 Processed ${tracksToProcess.length} tracks.`);
             }
         }
 

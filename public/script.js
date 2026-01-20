@@ -351,16 +351,7 @@ async function loadDevices(refresh = false) {
         const data = await res.json();
 
         if (data.devices && data.devices.length > 0) {
-            deviceList.innerHTML = data.devices.map(device => `
-                <div class="device-item ${device.is_active ? 'active' : ''}" data-id="${device.id}">
-                    <span class="device-icon">${getDeviceIcon(device.type)}</span>
-                    <div class="device-info">
-                        <div class="device-name">${escapeHtml(device.name)}</div>
-                        <div class="device-type">${device.type}</div>
-                    </div>
-                    ${device.is_active ? '<span style="color: var(--success)">● Selected</span>' : ''}
-                </div>
-            `).join('');
+            deviceList.innerHTML = data.devices.map(renderDeviceItem).join('');
 
             // Add click handlers
             deviceList.querySelectorAll('.device-item').forEach(item => {
@@ -377,6 +368,19 @@ async function loadDevices(refresh = false) {
     } catch (err) {
         deviceList.innerHTML = '<p class="loading">Failed to search for devices.</p>';
     }
+}
+
+function renderDeviceItem(device) {
+    return `
+        <div class="device-item ${device.is_active ? 'active' : ''}" data-id="${device.id}">
+            <span class="device-icon">${getDeviceIcon(device.type)}</span>
+            <div class="device-info">
+                <div class="device-name">${escapeHtml(device.name)}</div>
+                <div class="device-type">${device.type}</div>
+            </div>
+            ${device.is_active ? '<span style="color: var(--success)">● Selected</span>' : ''}
+        </div>
+    `;
 }
 
 function getDeviceIcon(type) {
