@@ -15,6 +15,8 @@ Your personality:
 
 IMPORTANT: Always include a verbal response (hype, explanation, jokes) followed by the tool call JSON. Never send only the JSON.
 
+If you return songs in the JSON, also include the song title and artist in the verbal response.
+
 You manage a music queue and can play songs. You have these tools:
 
 1. Play a single song immediately:
@@ -124,32 +126,32 @@ function parseToolCall(response) {
     return null;
 }
 
+
+
 /**
- * Ask the LLM to generate song queries for a theme
- * @param {number} count - Number of songs to generate
- * @param {string} theme - Theme description
- * @returns {Promise<string[]>} Array of search queries
+ * Get a fun fact about a song/artist for 'Pop-up Video' style facts
+ * @param {string} songTitle - Title of the song
+ * @param {string} artist - Artist name
+ * @returns {Promise<string>} A fun fact
  */
-async function generateSongQueries(count, theme) {
-    const prompt = `Generate exactly ${count} YouTube search queries for songs that match this theme: "${theme}"
-
-Return ONLY a JSON array of strings, nothing else. Every item in the array MUST be a single string.
-
-Example format:
-["Artist - Song Title", "Another Artist - Another Song", "Artist - Track"]
-
-Be creative and pick diverse, interesting songs that fit the theme!`;
+async function getFunFact(songTitle, artist) {
+    const prompt = `Provide one SHORT, interesting fun fact about the song "${songTitle}" by ${artist}.
+    
+    The fact should be:
+    - 1-2 sentences max
+    - Trivia, history, or a "did you know" style fact
+    - NO markdown, just plain text
+    
+    Return ONLY the fact text.`;
 
     try {
-        console.log(`🎵 Song Query Request: ${count} songs for theme "${theme}"`);
-
         const response = await fetch(`${OLLAMA_HOST}/api/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 model: OLLAMA_MODEL,
                 messages: [
-                    { role: 'system', content: 'You are a music expert. Respond ONLY with a simple JSON array of strings.' },
+                    { role: 'system', content: 'You are a music trivia expert. Provide single, short fun facts.' },
                     { role: 'user', content: prompt }
                 ],
                 stream: false
@@ -157,42 +159,22 @@ Be creative and pick diverse, interesting songs that fit the theme!`;
         });
 
         if (!response.ok) {
-            throw new Error(`Ollama error: ${response.status}`);
+            return "Did you know? Music is awesome! 🎵";
         }
 
         const data = await response.json();
-        const content = data.message?.content || '[]';
-
-        console.log(`🎵 Song Query LLM Response: ${content}`);
-
-        // Extract JSON array from response
-        const jsonMatch = content.match(/\[[\s\S]*\]/);
-        if (jsonMatch) {
-            let queries = JSON.parse(jsonMatch[0]);
-
-            // Defensive: Flatten nested arrays and ensure all are strings
-            if (Array.isArray(queries)) {
-                queries = queries.map(q => {
-                    if (Array.isArray(q)) return q[0]; // Take first element if it's an array
-                    return q;
-                }).filter(q => typeof q === 'string' && q.trim().length > 0);
-
-                console.log(`🎵 Generated ${queries.length} song queries for "${theme}":`, queries);
-                return queries.slice(0, count);
-            }
-        }
-
-        return [];
+        return data.message?.content?.trim() || "Pop-up: This track is a certified banger!";
     } catch (error) {
-        console.error('Failed to generate song queries:', error);
-        return [];
+        console.error('Failed to get fun fact:', error);
+        return "Pop-up: Loading cool trivia... 🤖";
     }
 }
 
 module.exports = {
     chat,
     parseToolCall,
-    generateSongQueries,
+
+    getFunFact,
     setSystemPrompt,
     getSystemPrompt,
     clearHistory,

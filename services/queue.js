@@ -7,6 +7,7 @@ let queue = [];
 
 // Currently playing track
 let currentTrack = null;
+let currentFunFact = null;
 
 // Callback for when we need to play the next track
 let onPlayNext = null;
@@ -28,14 +29,7 @@ function addToQueue(track) {
     console.log(`📋 Queue: Added "${track.title}" (${queue.length} in queue)`);
 }
 
-/**
- * Add multiple tracks to the queue
- * @param {Array} tracks - Array of track objects
- */
-function addMultipleToQueue(tracks) {
-    tracks.forEach(track => queue.push(track));
-    console.log(`📋 Queue: Added ${tracks.length} tracks (${queue.length} total in queue)`);
-}
+
 
 /**
  * Get all tracks in the queue
@@ -57,8 +51,18 @@ function getCurrentTrack() {
  * Set the current track (when playback starts)
  * @param {object} track - Track that's now playing
  */
-function setCurrentTrack(track) {
+function setCurrentTrack(track, funFact = null) {
     currentTrack = track;
+    currentFunFact = funFact;
+}
+
+/**
+ * Update the fun fact for the current track
+ * @param {string} funFact - The fun fact text
+ */
+function setFunFact(funFact) {
+    currentFunFact = funFact;
+    console.log(`💡 Queue: Updated fun fact for "${currentTrack ? currentTrack.title : 'unknown'}"`);
 }
 
 /**
@@ -140,6 +144,7 @@ function onTrackFinished() {
 function getStatus() {
     return {
         currentTrack,
+        currentFunFact,
         queue: [...queue],
         queueLength: queue.length,
         hasNext: queue.length > 0
@@ -148,7 +153,7 @@ function getStatus() {
 
 module.exports = {
     addToQueue,
-    addMultipleToQueue,
+
     getQueue,
     getCurrentTrack,
     setCurrentTrack,
@@ -159,5 +164,6 @@ module.exports = {
     skipToNext,
     onTrackFinished,
     getStatus,
+    setFunFact,
     setPlayNextCallback
 };

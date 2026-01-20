@@ -26,6 +26,8 @@ const resetPersona = document.getElementById('resetPersona');
 
 // ===== State =====
 let nowPlayingInterval = null;
+let currentTrackId = null;
+let factShownForTrack = null;
 
 // ===== Initialization =====
 document.addEventListener('DOMContentLoaded', () => {
@@ -203,8 +205,33 @@ async function updateNowPlayingFromApi() {
 function updateNowPlaying(track) {
     nowPlaying.classList.remove('hidden');
     albumArt.src = track.albumArt || track.thumbnail || '';
-    trackName.textContent = track.name || track.title;
-    artistName.textContent = track.artist || track.author || '';
+
+    const newTrackName = track.name || track.title;
+    const newArtist = track.artist || track.author || '';
+
+    // Check if track changed
+    if (newTrackName !== trackName.textContent || newArtist !== artistName.textContent) {
+        trackName.textContent = newTrackName;
+        artistName.textContent = newArtist;
+    }
+
+    // Always check for fun fact (it might arrive asynchronously after track starts)
+    handleFunFact(track);
+}
+
+function handleFunFact(track) {
+    const trackId = track.name + track.artist;
+    console.log('💡 Checking fun fact for:', trackId, 'Has fact:', !!track.funFact);
+
+    // Only show if we have a fact and haven't shown it for this track yet
+    if (track.funFact && factShownForTrack !== trackId) {
+        console.log('💡 Showing fun fact in chat');
+        // Send fact as a bot message in chat
+        addMessage(`Hallucinated Fun Fact: ${track.funFact}`, 'bot');
+        factShownForTrack = trackId;
+    } else {
+        console.log('💡 Skipped fact. Shown already?', factShownForTrack === trackId);
+    }
 }
 
 function updateQueueCount(count) {

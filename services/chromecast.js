@@ -62,6 +62,12 @@ async function discoverDevices(timeout = 5000) {
                 if (deviceInfo) {
                     discoveredDevices.push(deviceInfo);
                     console.log(`📺 Found: ${deviceInfo.name} (${deviceInfo.host})`);
+
+                    // Auto-select "Den TV" if avail and nothing selected
+                    if (!selectedDeviceId && deviceInfo.name === 'Den TV') {
+                        selectedDeviceId = deviceInfo.id;
+                        console.log(`📺 Auto-selected default device: ${deviceInfo.name}`);
+                    }
                 }
             } catch (e) { }
         });

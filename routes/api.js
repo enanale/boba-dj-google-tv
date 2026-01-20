@@ -28,7 +28,14 @@ async function playTrack(track) {
     }
 
     try {
+        // Set queue status immediately so UI updates (clearing old fact)
+        queue.setCurrentTrack(track, null);
+
         const streamInfo = await youtube.getStreamUrl(track.id);
+
+        // Fetch fun fact in parallel to speed up total time
+        const factPromise = llm.getFunFact(track.title, track.author);
+
         await chromecast.castStream(
             streamInfo.streamUrl,
             streamInfo.contentType,
@@ -39,7 +46,9 @@ async function playTrack(track) {
                 thumbnail: track.thumbnail
             }
         );
-        queue.setCurrentTrack(track);
+
+        const funFact = await factPromise;
+        queue.setFunFact(funFact);
         return true;
     } catch (error) {
         console.error('Failed to play track:', error);
@@ -295,6 +304,7 @@ router.get('/now-playing', (req, res) => {
             name: nowPlaying.title,
             artist: nowPlaying.author,
             albumArt: nowPlaying.thumbnail,
+            funFact: queueStatus.currentFunFact,
             queueLength: queueStatus.queueLength
         });
     } else {

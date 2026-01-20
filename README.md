@@ -5,6 +5,7 @@ A playful, AI-powered DJ chatbot that casts YouTube music to your Google TV or C
 ## Features
 
 - 🎵 **Chat with DJ Boba** – An AI DJ with a fun, customizable personality
+- 💡 **Fun Facts** – "Pop-up Video" style trivia in the chat for every song
 - 🔍 **YouTube Search** – Find any song, no API keys needed
 - 📺 **Chromecast Integration** – Cast directly to your Google TV or speakers
 - 📋 **Playlist Queue** – "Play 5 songs about robots" builds a themed playlist
@@ -43,7 +44,7 @@ Chat with DJ Boba:
 - *"Play 5 songs about the ocean"* – Queues a themed playlist
 - *"Skip"* – Use the queue modal to skip tracks
 
-Click the 📋 button to view and manage the queue.
+As songs start, look for the **💡 Did you know?** messages in the chat!
 
 ## Tech Stack
 
