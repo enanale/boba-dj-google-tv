@@ -85,6 +85,65 @@ async function playTrack(track, deviceId = null) {
 }
 
 // Chat endpoint
+/**
+ * Process song requests (search, play, queue)
+ * @param {string[]} queries - List of search terms
+ */
+async function handleSongRequests(queries) {
+    const output = {
+        songPlayed: null,
+        queuedSongs: [],
+        notFound: [],
+        error: null
+    };
+
+    for (const q of queries) {
+        try {
+            const videos = await youtube.search(q);
+            if (videos.length > 0) {
+                const track = {
+                    id: videos[0].id,
+                    title: videos[0].title,
+                    author: videos[0].author,
+                    thumbnail: videos[0].thumbnail
+                };
+
+                // Play immediately if idle and haven't played yet in this batch
+                if (!output.songPlayed && !chromecast.getIsPlaying()) {
+                    const success = await playTrack(track);
+                    if (success) {
+                        output.songPlayed = {
+                            name: track.title,
+                            artist: track.author,
+                            thumbnail: track.thumbnail,
+                            videoId: track.id
+                        };
+                    } else {
+                        // If play failed due to no device
+                        if (!selectedDevice && !chromecast.getSelectedDevice()) {
+                            output.error = "Yo, I can't find any Chromecast devices! Make sure your Google TV is on. 📺";
+                            break;
+                        }
+                        // If play failed but device exists, add to queue as fallback
+                        queue.addToQueue(track);
+                        output.queuedSongs.push(track);
+                    }
+                } else {
+                    queue.addToQueue(track);
+                    output.queuedSongs.push(track);
+                }
+            } else {
+                output.notFound.push(q);
+            }
+        } catch (e) {
+            console.error(`Search error for ${q}:`, e);
+            output.notFound.push(q);
+        }
+    }
+    return output;
+}
+
+// Chat endpoint
 router.post('/chat', async (req, res) => {
     const { message } = req.body;
 
@@ -95,78 +154,40 @@ router.post('/chat', async (req, res) => {
     try {
         // Get LLM response
         let response = await llm.chat(message);
-        let songPlayed = null;
-        let queuedSongs = [];
-
-        // Check for tool calls
         const toolCall = llm.parseToolCall(response);
 
-        if (toolCall) {
-            const processQueries = async (queries) => {
-                const results = [];
-                for (const q of queries) {
-                    try {
-                        const videos = await youtube.search(q);
-                        if (videos.length > 0) {
-                            results.push({
-                                id: videos[0].id,
-                                title: videos[0].title,
-                                author: videos[0].author,
-                                thumbnail: videos[0].thumbnail
-                            });
-                        }
-                    } catch (e) {
-                        console.error(`Search error for ${q}:`, e);
-                    }
-                }
-                return results;
-            };
+        let actionResult = {
+            songPlayed: null,
+            queuedSongs: [],
+            notFound: [],
+            error: null
+        };
 
-            // Determine what tracks to handle
-            let tracksToProcess = [];
+        if (toolCall) {
+            let queries = [];
             if (toolCall.tool === 'play_song') {
-                tracksToProcess = await processQueries([toolCall.query + ' official audio']);
-                if (tracksToProcess.length === 0) {
-                    response = `Hmm, couldn't find anything for "${toolCall.query}". Try again? 🤔`;
-                }
+                queries = [toolCall.query + ' official audio'];
             } else if (toolCall.tool === 'queue_songs') {
-                const { songs } = toolCall;
-                if (songs && songs.length > 0) {
-                    tracksToProcess = await processQueries(songs);
-                } else {
+                if (toolCall.songs && toolCall.songs.length > 0) {
+                    queries = toolCall.songs;
+                }
+            }
+
+            if (queries.length > 0) {
+                actionResult = await handleSongRequests(queries);
+
+                // Handle specific scenarios for response text
+                if (actionResult.error) {
+                    response = actionResult.error;
+                } else if (toolCall.tool === 'play_song' && actionResult.notFound.length > 0) {
+                    response = `Hmm, couldn't find anything for "${toolCall.query}". Try again? 🤔`;
+                } else if (toolCall.tool === 'queue_songs' && actionResult.queuedSongs.length === 0 && actionResult.songPlayed === null) {
                     response = "I lost my train of thought and didn't queue anything! 🧋";
                 }
-            }
 
-            // Process tracks (Play first if idle, queue rest)
-            // Ensure we have a device by checking before loop, or let playTrack handle it
-            // playTrack now handles auto-selection, so we can check if it succeeds.
-
-            for (const track of tracksToProcess) {
-                if (!songPlayed && !chromecast.getIsPlaying()) {
-                    const success = await playTrack(track); // playTrack handles device selection
-                    if (success) {
-                        songPlayed = {
-                            name: track.title,
-                            artist: track.author,
-                            thumbnail: track.thumbnail,
-                            videoId: track.id
-                        };
-                    } else {
-                        // If play failed (e.g. no device), ensure user knows
-                        if (!selectedDevice && !chromecast.getSelectedDevice()) {
-                            response = "Yo, I can't find any Chromecast devices! Make sure your Google TV is on. 📺";
-                            break;
-                        }
-                    }
-                } else {
-                    queue.addToQueue(track);
-                    queuedSongs.push(track);
+                if (actionResult.songPlayed || actionResult.queuedSongs.length > 0) {
+                    console.log(`📋 Processed requests. Played: ${!!actionResult.songPlayed}, Queued: ${actionResult.queuedSongs.length}`);
                 }
-            }
-
-            if (tracksToProcess.length > 0) {
-                console.log(`📋 Processed ${tracksToProcess.length} tracks.`);
             }
         }
 
@@ -175,8 +196,8 @@ router.post('/chat', async (req, res) => {
 
         res.json({
             response,
-            songPlayed,
-            queuedSongs,
+            songPlayed: actionResult.songPlayed,
+            queuedSongs: actionResult.queuedSongs,
             queueLength: queue.getQueue().length
         });
     } catch (error) {

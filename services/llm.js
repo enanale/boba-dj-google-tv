@@ -89,6 +89,12 @@ async function chat(userMessage) {
         return assistantMessage;
     } catch (error) {
         console.error('LLM Error:', error);
+
+        // Handle connection refused (Ollama not running)
+        if (error.cause && error.cause.code === 'ECONNREFUSED') {
+            return "🛑 I can't reach my brain! Is Ollama running? (Try running `ollama serve` in your terminal) 🧠";
+        }
+
         throw error;
     }
 }

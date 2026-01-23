@@ -25,7 +25,7 @@ graph TD
 
 #### Backend (`server.js`, `routes/api.js`)
 - **`routes/api.js`**:
-    - `POST /chat`: Main interaction loop. Sends message to LLM -> LLM returns text + tool calls -> Server executes tool (queue songs) -> Returns response.
+    - `POST /chat`: Main interaction loop. Uses `handleSongRequests` helper to process search/play/queue logic based on LLM tool calls.
     - `GET /now-playing`: Long-polling endpoint for UI updates. Returns track info and **Fun Facts**.
     - `POST /player/control`: Handles Skip, Device Selection, etc.
 - **`services/llm.js`**:
@@ -52,3 +52,15 @@ graph TD
     - Play commands ("Play 80s music") -> Verify songs queue up.
     - Playback -> Verify audio on Chromecast.
     - Chat -> Verify "**Hallucinated Fun Fact**" messages appear at start of songs.
+
+## Lessons Learned
+
+### Ollama Connectivity & Error Handling
+- **Issue**: The application would crash with an `ECONNREFUSED` error if Ollama wasn't running.
+- **Root Cause**: The `fetch` call to the LLM service was unhandled in the node runtime.
+- **Fix**: Added a robust `try/catch` block in `services/llm.js` that specifically checks for `ECONNREFUSED` and returns a friendly error message ("I can't reach my brain!").
+- **Configuration**: Ensured `.env` uses `OLLAMA_MODEL=llama3.1` to match the user's installed model, as defaulting to `llama3` caused silent failures or "model not found" errors when only 3.1 was present.
+
+### API Refactoring
+- **Issue**: The `/chat` endpoint was becoming monolithic, handling HTTP response, YouTube searching, playback logic, and queuing all in one block.
+- **Fix**: Extracted the song request processing into a `handleSongRequests` helper function. This separates concerns, making the route handler cleaner and the logic potentially reusable for other triggers (e.g., a "Quick Play" button).
