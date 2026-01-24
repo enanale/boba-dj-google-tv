@@ -64,3 +64,10 @@ graph TD
 ### API Refactoring
 - **Issue**: The `/chat` endpoint was becoming monolithic, handling HTTP response, YouTube searching, playback logic, and queuing all in one block.
 - **Fix**: Extracted the song request processing into a `handleSongRequests` helper function. This separates concerns, making the route handler cleaner and the logic potentially reusable for other triggers (e.g., a "Quick Play" button).
+
+### Search Grounding & Hallucinations
+- **Issue**: Local LLM was hallucinating fun facts.
+- **Attempt 1 (Web Search)**: Integrated `duck-duck-scrape` to find real facts.
+    - *Lesson*: `safeSearch` parameter requires a specific Enum (`SafeSearchType.STRICT`) or it crashes.
+    - *Lesson*: DuckDuckGo aggressively rate limits automated requests (returned "anomaly detected").
+- **Solution (Metadata)**: Switched to extracting reputable data directly from the source. Updated `yt-dlp` to dump JSON metadata (description, tags, upload date) and fed this context to the LLM. This is faster, reliable, and avoids external rate limits.

@@ -46,19 +46,23 @@ async function getStreamUrl(videoId) {
     const youtubeUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
     try {
-        // Get the best audio/video stream URL
-        // Using format that Chromecast can play (mp4/m4a)
+        // Get full video info (URL + metadata) in one go
         const { stdout } = await execAsync(
-            `yt-dlp -f "best[ext=mp4]/best" --get-url --no-playlist "${youtubeUrl}"`,
-            { timeout: 15000 }
+            `yt-dlp -f "best[ext=mp4]/best" --dump-json --no-playlist "${youtubeUrl}"`,
+            { timeout: 15000, maxBuffer: 1024 * 1024 * 10 } // Increase buffer for JSON
         );
 
-        const streamUrl = stdout.trim();
-        console.log(`🎬 Got stream URL for ${videoId}`);
+        const info = JSON.parse(stdout);
+        const streamUrl = info.url;
+
+        console.log(`🎬 Got stream URL + Metadata for ${videoId}`);
 
         return {
             streamUrl,
-            contentType: 'video/mp4'
+            contentType: 'video/mp4',
+            description: info.description || "",
+            tags: info.tags || [],
+            uploadDate: info.upload_date
         };
     } catch (error) {
         console.error('yt-dlp error:', error.message);

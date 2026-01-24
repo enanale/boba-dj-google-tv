@@ -1,5 +1,7 @@
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3';
+const { search, SafeSearchType } = require('duck-duck-scrape');
+
 
 // Default DJ Persona with queue support
 const DEFAULT_SYSTEM_PROMPT = `You are DJ Boba, a fun and energetic AI disc jockey! 🧋🎧
@@ -134,15 +136,50 @@ function parseToolCall(response) {
 
 
 
+
 /**
  * Get a fun fact about a song/artist for 'Pop-up Video' style facts
  * @param {string} songTitle - Title of the song
  * @param {string} artist - Artist name
+ * @param {string} [extraContext] - Optional pre-fetched context
  * @returns {Promise<string>} A fun fact
  */
-async function getFunFact(songTitle, artist) {
+async function getFunFact(songTitle, artist, extraContext = null) {
+    let context = extraContext || "";
+
+    console.log(`💡 getFunFact called for "${songTitle}"`);
+    console.log(`💡 extraContext available: ${!!extraContext} (Length: ${extraContext ? extraContext.length : 0})`);
+
+    // Only search if we don't have context yet
+    if (!context) {
+        try {
+            console.log(`🔎 Searching for facts: "${songTitle}" by ${artist}`);
+            const searchResults = await search(`fun fact about song "${songTitle}" by ${artist}`, {
+                safeSearch: SafeSearchType.STRICT
+            });
+
+            if (searchResults && searchResults.results && searchResults.results.length > 0) {
+                // Take top 3 snippets
+                context = searchResults.results
+                    .slice(0, 3)
+                    .map(r => `- ${r.title}: ${r.description}`)
+                    .join('\n');
+                console.log("✅ Found grounding data:", context.substring(0, 100) + "...");
+            } else {
+                console.log("⚠️ No search results found, fallback to internal knowledge.");
+            }
+        } catch (err) {
+            console.error("⚠️ Search failed, fallback to internal knowledge:", err.message);
+        }
+    } else {
+        console.log("✅ Using provided video metadata for grounding.");
+    }
+
     const prompt = `Provide one SHORT, interesting fun fact about the song "${songTitle}" by ${artist}.
     
+    Use the following search results as ground truth if available:
+    ${context}
+
     The fact should be:
     - 1-2 sentences max
     - Trivia, history, or a "did you know" style fact
@@ -157,7 +194,7 @@ async function getFunFact(songTitle, artist) {
             body: JSON.stringify({
                 model: OLLAMA_MODEL,
                 messages: [
-                    { role: 'system', content: 'You are a music trivia expert. Provide single, short fun facts.' },
+                    { role: 'system', content: 'You are a music trivia expert. Provide single, short fun facts based on the provided context.' },
                     { role: 'user', content: prompt }
                 ],
                 stream: false
@@ -172,6 +209,12 @@ async function getFunFact(songTitle, artist) {
         return data.message?.content?.trim() || "Pop-up: This track is a certified banger!";
     } catch (error) {
         console.error('Failed to get fun fact:', error);
+
+        // Handle connection refused (Ollama not running)
+        if (error.cause && error.cause.code === 'ECONNREFUSED') {
+            return "🛑 I can't reach my brain! Is Ollama running? (Try running `ollama serve` in your terminal) 🧠";
+        }
+
         return "Pop-up: Loading cool trivia... 🤖";
     }
 }

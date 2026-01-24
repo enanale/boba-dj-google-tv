@@ -61,8 +61,18 @@ async function playTrack(track, deviceId = null) {
 
         const streamInfo = await youtube.getStreamUrl(track.id);
 
-        // Fetch fun fact in parallel to speed up total time
-        const factPromise = llm.getFunFact(track.title, track.author);
+        // Prepare context from video metadata
+        console.log("📝 Stream Info Keys:", Object.keys(streamInfo));
+        console.log("📝 Description Preview:", streamInfo.description ? streamInfo.description.slice(0, 50) : "NULL");
+
+        const videoContext = `
+        Video Description: ${streamInfo.description ? streamInfo.description.slice(0, 500) : 'N/A'}...
+        Tags: ${streamInfo.tags ? streamInfo.tags.join(', ') : 'N/A'}
+        Upload Date: ${streamInfo.uploadDate || 'Unknown'}
+        `;
+
+        // Fetch fun fact using video metadata as grounding (bypassing DDG if possible)
+        const factPromise = llm.getFunFact(track.title, track.author, videoContext);
 
         await chromecast.castStream(
             streamInfo.streamUrl,
